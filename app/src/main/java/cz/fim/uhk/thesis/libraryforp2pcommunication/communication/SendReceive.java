@@ -5,16 +5,22 @@ import android.util.Log;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
-import java.lang.annotation.Target;
 import java.net.Socket;
 
 import cz.fim.uhk.thesis.libraryforp2pcommunication.MainClass;
 
+/**
+ * @author Bc. Ondřej Schneider - FIM UHK
+ * @version 1.0
+ * @since 2021-04-06
+ * Třída definující formu komunikace (zpráv) mezi P2P klientem a P2P serverem
+ * Jakým způsobem jsou zprávy zasílány a přijímány či čteny
+ */
 public class SendReceive extends Thread {
-    private Socket socket;
+    private final Socket socket;
     private InputStream inputStream;
     private OutputStream outputStream;
-    private MainClass mainClass;
+    private final MainClass mainClass;
 
     private static final String TAG = "P2PLibrary/SendReceive";
     private static final int BUFFER_SIZE = 1024;
@@ -45,10 +51,9 @@ public class SendReceive extends Thread {
         while (socket != null) {
             try {
                 bytes = inputStream.read(buffer);
-                Log.d(TAG, "readMessage TOTO");
                 // pokud zpráva není prázdná
                 if (bytes > 0) {
-                    Log.d(TAG, "readMessage Handleros poslanos TOTI");
+                    Log.d(TAG, "readMessage() - zaslaná zpráva se právě čte");
                     mainClass.handler.obtainMessage(MainClass.getMessageRead(), bytes, -1, buffer)
                             .sendToTarget();
                 }
@@ -63,7 +68,7 @@ public class SendReceive extends Thread {
     public void writeMessage(byte[] bytes) {
         try {
             outputStream.write(bytes);
-            Log.d(TAG, "Write Message poslanos");
+            Log.d(TAG, "writeMessage() - zpráva se odesílá");
         } catch (IOException e) {
             Log.e(TAG, "Nepodařilo se zapsat zprávu k odeslání: ");
             e.printStackTrace();

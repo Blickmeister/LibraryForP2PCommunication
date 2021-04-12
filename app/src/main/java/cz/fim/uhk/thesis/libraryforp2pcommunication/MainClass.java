@@ -31,6 +31,14 @@ import cz.fim.uhk.thesis.libraryforp2pcommunication.communication.ClientRole;
 import cz.fim.uhk.thesis.libraryforp2pcommunication.communication.ServerRole;
 import cz.fim.uhk.thesis.libraryforp2pcommunication.receiver.WifiDirectBroadcastReceiver;
 
+/**
+ * @author Bc. Ondřej Schneider - FIM UHK
+ * @version 1.0
+ * @since 2021-04-06
+ * Knihovna realizující role P2P serveru a P2P klienta v konceptu hybridního klienta
+ * Především pro p2p komunikaci a předávání zpráv, jejichž podoba je dána právě rolí, kterou klient zastává
+ * hlavní (řídící) třída knihovny
+ */
 public class MainClass extends AppCompatActivity implements LibraryLoaderInterface {
     // TAG pro logování
     private static final String TAG = "P2PLibrary/MainClass";
@@ -56,7 +64,7 @@ public class MainClass extends AppCompatActivity implements LibraryLoaderInterfa
     // proměnné pro kontext aplikace
     private Context context;
     private String libraryPathInApp;
-    // TODO
+
     // u p2p knihovny navíc potřeba instance hlavní aktivity a mód, ve kterém má být knihovna spuštěna
     private Activity mainActivity;
     // 0 -> knihovna je spuštěna jako p2p klient
@@ -65,12 +73,10 @@ public class MainClass extends AppCompatActivity implements LibraryLoaderInterfa
     // u p2p knihovny navíc potřeba získat data z aplikace pro odeslání v podobě byte[]
     byte[] messageToSend;
 
-    // proměnné vypovídající o úspěšnosti spuštění knihovny
-    // informace o povolení k získání polohy - slouží k nastavení návratové hodnoty metody start()
-    private boolean locationPermissionGranted;
-    // informace o úspěšnosti nastavení role knihovny - slouží k nastavení návratové hodnoty metody start()
-    private boolean isSetLibraryRoleSuccessful;
-
+    // informace o úspěšnosti zavedení knihovny - slouží k nastavení návratové hodnoty metody start()
+    // informace o úspěšnosti se dá rovněž předat v Intent objektu pomocí Broadcast
+    // zde jen pro ukázku -> metoda start() vrací úspěšnost zavedení, nikoliv správnou funkci - viz. text práce
+    private boolean isLibraryLoadedSuccessfully;
 
     // nastavení a sledování stavu Wi-Fi
     private WifiManager wifiManager;
@@ -83,12 +89,8 @@ public class MainClass extends AppCompatActivity implements LibraryLoaderInterfa
     // IntentFilter pro naslouchání a zachytávání událostí Wi-Fi P2P komunikace
     private IntentFilter intentFilter;
     // Seznam dostupných P2P zařízení (peers)
-    private List<WifiP2pDevice> peers = new ArrayList<>();
+    private final List<WifiP2pDevice> peers = new ArrayList<>();
     private WifiP2pDevice[] peersArray;
-    // obdržený seznam klientů pro zaslání do aplikace
-    private byte[] receivedClients;
-    // obdržený informace od klienta pro zaslání do aplikace
-    private byte[] receivedClientInformation;
 
     // instance tříd pro komunikaci mezi rolí klienta a serveru
     private ServerRole serverRole;
@@ -99,35 +101,35 @@ public class MainClass extends AppCompatActivity implements LibraryLoaderInterfa
         Log.d(TAG, "Knihovna startuje");
         this.context = context;
         this.libraryPathInApp = path;
-        // init WifiManager objektu
-        // TODO try catch tady mysim nema smysl - kusit
+
         try {
-        wifiManager = (WifiManager) context.getApplicationContext()
-                .getSystemService(Context.WIFI_SERVICE);
-        // kontrola stavu Wi-Fi
-        if (!wifiManager.isWifiEnabled()) {
-            // pokud není Wi-Fi zapnuta -> zapneme
-            wifiManager.setWifiEnabled(true);
-        }
-        // init WiFi p2p manažera, kanálu, receiveru a intent filteru
-        p2pManager = (WifiP2pManager) context.getSystemService(Context.WIFI_P2P_SERVICE);
-        channel = p2pManager.initialize(context, context.getMainLooper(), null);
-        p2pReceiver = new WifiDirectBroadcastReceiver(p2pManager, channel, this);
-        intentFilter = new IntentFilter();
+            // init WifiManager objektu
+            wifiManager = (WifiManager) context.getApplicationContext()
+                    .getSystemService(Context.WIFI_SERVICE);
+            // kontrola stavu Wi-Fi
+            if (!wifiManager.isWifiEnabled()) {
+                // pokud není Wi-Fi zapnuta -> zapneme
+                wifiManager.setWifiEnabled(true);
+            }
+            // init WiFi p2p manažera, kanálu, receiveru a intent filteru
+            p2pManager = (WifiP2pManager) context.getSystemService(Context.WIFI_P2P_SERVICE);
+            channel = p2pManager.initialize(context, context.getMainLooper(), null);
+            p2pReceiver = new WifiDirectBroadcastReceiver(p2pManager, channel, this);
+            intentFilter = new IntentFilter();
 
-        // definici událostí, kterým má aplikace naslouchat pomocí Intent filteru
-        intentFilter.addAction(WifiP2pManager.WIFI_P2P_STATE_CHANGED_ACTION);
-        intentFilter.addAction(WifiP2pManager.WIFI_P2P_PEERS_CHANGED_ACTION);
-        intentFilter.addAction(WifiP2pManager.WIFI_P2P_CONNECTION_CHANGED_ACTION);
-        intentFilter.addAction(WifiP2pManager.WIFI_P2P_THIS_DEVICE_CHANGED_ACTION);
+            // definici událostí, kterým má aplikace naslouchat pomocí Intent filteru
+            intentFilter.addAction(WifiP2pManager.WIFI_P2P_STATE_CHANGED_ACTION);
+            intentFilter.addAction(WifiP2pManager.WIFI_P2P_PEERS_CHANGED_ACTION);
+            intentFilter.addAction(WifiP2pManager.WIFI_P2P_CONNECTION_CHANGED_ACTION);
+            intentFilter.addAction(WifiP2pManager.WIFI_P2P_THIS_DEVICE_CHANGED_ACTION);
 
-        // registrace Receiveru
-        mainActivity.registerReceiver(p2pReceiver, intentFilter);
+            // registrace Receiveru
+            startListening();
 
-        // start procesu vykonávání P2P funkcí knihovny - začíná vyhledáním zařízení (peers)
-        discoverPeers();
-        Log.d(TAG, "Knihovna běží");
-        return 0;
+            // start procesu vykonávání P2P funkcí knihovny - začíná vyhledáním zařízení (peers)
+            discoverPeers();
+            Log.d(TAG, "Knihovna běží");
+            return 0;
         } catch (Exception ex) {
             Log.e(TAG, "Nepodařilo se zavést knihovnu metodou start(): ");
             ex.printStackTrace();
@@ -136,7 +138,7 @@ public class MainClass extends AppCompatActivity implements LibraryLoaderInterfa
     }
 
     // metoda pro vyhledání zařízení (peers)
-    private void discoverPeers() {
+    public void discoverPeers() {
         // metoda discoverPeers() žádá povolení k získání polohy - ACCESS_FINE_LOCATION
         // kontrola zažádání povolení k získání polohy
         if (checkLocationPermission()) {
@@ -152,7 +154,7 @@ public class MainClass extends AppCompatActivity implements LibraryLoaderInterfa
                 @Override
                 public void onFailure(int reason) {
                     // nepodařilo se zahájit vyhledávání
-                    isSetLibraryRoleSuccessful = false;
+                    isLibraryLoadedSuccessfully = false;
                     Log.e(TAG, "Nepodařilo se vyhledat dostupné peers. Důvod:" + reason);
                 }
             });
@@ -170,19 +172,29 @@ public class MainClass extends AppCompatActivity implements LibraryLoaderInterfa
                 // objekt konfigurace Wi-Fi P2P připojení k zařízení
                 WifiP2pConfig config = new WifiP2pConfig();
                 config.deviceAddress = device.deviceAddress;
+
+                // nastavení pravděpodobnosti, že pojící se zařízení bude group owner dle
+                // groupOwnerIntent -> čím vyšší hodnota -> tím vyšší pravděpodobnost
+                if (mode == RUN_LIBRARY_AS_CLIENT_VALUE) {
+                    // jedná-li se o klienta -> mamá adresu serveru -> chceme aby byl group owner
+                    config.groupOwnerIntent = 15;
+                } else {
+                    // naopak chceme, aby klient nebyl group owner
+                    config.groupOwnerIntent = 0;
+                }
                 // init procesu připojení k zařízení
                 p2pManager.connect(channel, config, new WifiP2pManager.ActionListener() {
                     @Override
                     public void onSuccess() {
                         // úspěšné připojení
-                        isSetLibraryRoleSuccessful = true;
+                        isLibraryLoadedSuccessfully = true;
                         Log.d(TAG, "Připojení k zařízení " + device.deviceAddress + "bylo úspěšné");
                     }
 
                     @Override
                     public void onFailure(int reason) {
                         // neúspěšné připojení
-                        isSetLibraryRoleSuccessful = false;
+                        isLibraryLoadedSuccessfully = false;
                         Log.e(TAG, "Připojení k zařízení" + device.deviceAddress + "se nezdařilo");
                     }
                 });
@@ -193,8 +205,7 @@ public class MainClass extends AppCompatActivity implements LibraryLoaderInterfa
     private boolean checkLocationPermission() {
         String[] locationPermission = {FINE_LOCATION};
         if (ActivityCompat.checkSelfPermission(context, FINE_LOCATION)
-                != PackageManager.PERMISSION_GRANTED)
-        {
+                != PackageManager.PERMISSION_GRANTED) {
             ActivityCompat.requestPermissions(mainActivity, locationPermission,
                     LOCATION_PERMISSION_REQUEST_CODE);
             return false;
@@ -209,22 +220,20 @@ public class MainClass extends AppCompatActivity implements LibraryLoaderInterfa
     @Override
     public void onRequestPermissionsResult(int requestCode, @NonNull String[] permissions, @NonNull int[] grantResults) {
         // kontrola výsledku zažádání o povolení
-        switch (requestCode) {
-            case LOCATION_PERMISSION_REQUEST_CODE: {
-                if (grantResults.length > 0) {
-                    // cyklus pro případ zvýšení počtu povolení (v tuhle chvíli pouze jedno)
-                    for (int i = 0; i < grantResults.length; i++) {
-                        if (grantResults[i] != PackageManager.PERMISSION_GRANTED) {
-                            Toast.makeText(context, "Uživatel zamítl povolení k poloze:" +
-                                            " není možné spustit funkci P2P komunikace",
-                                    Toast.LENGTH_LONG).show();
-                            //locationPermissionGranted = false;
-                            return;
-                        }
+        if (requestCode == LOCATION_PERMISSION_REQUEST_CODE) {
+            if (grantResults.length > 0) {
+                // cyklus pro případ zvýšení počtu povolení (v tuhle chvíli pouze jedno)
+                for (int grantResult : grantResults) {
+                    if (grantResult != PackageManager.PERMISSION_GRANTED) {
+                        Toast.makeText(context, "Uživatel zamítl povolení k poloze:" +
+                                        " není možné spustit funkci P2P komunikace",
+                                Toast.LENGTH_LONG).show();
+                        isLibraryLoadedSuccessfully = false;
+                        return;
                     }
-                    // povolení uděleno -> lze znovu zahájit proces vykonávání P2P funkcí knihovny
-                    discoverPeers();
                 }
+                // povolení uděleno -> lze znovu zahájit proces vykonávání P2P funkcí knihovny
+                discoverPeers();
             }
         }
     }
@@ -235,7 +244,7 @@ public class MainClass extends AppCompatActivity implements LibraryLoaderInterfa
     public WifiP2pManager.PeerListListener peerListListener = new WifiP2pManager.PeerListListener() {
         @Override
         public void onPeersAvailable(WifiP2pDeviceList peerList) {
-            if(!peerList.getDeviceList().equals(peers)) {
+            if (!peerList.getDeviceList().equals(peers)) {
                 Log.d(TAG, "změna v seznamu zařízení peers");
                 // došlo k updatu seznamu
                 peers.clear();
@@ -243,20 +252,20 @@ public class MainClass extends AppCompatActivity implements LibraryLoaderInterfa
 
                 peersArray = new WifiP2pDevice[peerList.getDeviceList().size()];
                 int index = 0;
-                for(WifiP2pDevice device : peerList.getDeviceList()) {
+                for (WifiP2pDevice device : peerList.getDeviceList()) {
                     peersArray[index] = device;
                     index++;
                 }
                 // zahájení procesu připojení vždy při změně seznamu peers, pokud není seznam prázdný
                 // a připojení iniciuje zařízení s rolí serveru TODO ASI takhle ma byt
-                //if(peers.size() != 0 && mode == RUN_LIBRARY_AS_SERVER_VALUE) connectToPeers();
-                if(peers.size() != 0) connectToPeers();
+                if(peers.size() != 0 && mode == RUN_LIBRARY_AS_SERVER_VALUE) connectToPeers();
+                //if (peers.size() != 0) connectToPeers();
             }
 
             // kontrola zda je seznam peers prázdný
-            if(peers.size() == 0) {
+            if (peers.size() == 0) {
                 Toast.makeText(context, "Nebyla nalezena žádná dostupná zařízení",
-                                Toast.LENGTH_LONG).show();
+                        Toast.LENGTH_LONG).show();
             }
         }
     };
@@ -267,20 +276,22 @@ public class MainClass extends AppCompatActivity implements LibraryLoaderInterfa
     public WifiP2pManager.ConnectionInfoListener connectionInfoListener = info -> {
         final InetAddress groupOwnerAddress = info.groupOwnerAddress;
         // definice funkcí dle rolí v P2P připojení (groupOwner == server role)
-        if(info.groupFormed && info.isGroupOwner) {
+        Log.d(TAG, "info groupFormed null?: " + info.groupFormed + " groupOwner?: " + info.isGroupOwner);
+        if (info.groupFormed && info.isGroupOwner) {
             // host - server role
+            Log.d(TAG, "Zařízení připojeno v roli serveru");
             Toast.makeText(context, "Zařízení připojeno v roli serveru", Toast.LENGTH_SHORT)
                     .show();
             serverRole = new ServerRole(this);
             serverRole.start();
-        } else if(info.groupFormed) {
+        } else if (info.groupFormed) {
             // klient role
+            Log.d(TAG, "Zařízení připojeno v roli klienta");
             Toast.makeText(context, "Zařízení připojeno v roli klienta", Toast.LENGTH_SHORT)
                     .show();
-            clientRole = new ClientRole(groupOwnerAddress,this);
+            clientRole = new ClientRole(groupOwnerAddress, this);
             clientRole.start();
         }
-
     };
 
     // handler pro zpracovávní příchozích zpráv po získání zprávy pomocí readMessage() v novém vlákně
@@ -288,29 +299,28 @@ public class MainClass extends AppCompatActivity implements LibraryLoaderInterfa
     public Handler handler = new Handler(new Handler.Callback() {
         @Override
         public boolean handleMessage(@NonNull Message msg) {
-            switch (msg.what) {
-                case MESSAGE_READ:
-                    if (mode == RUN_LIBRARY_AS_SERVER_VALUE) {
-                        // informace ze senzorů a info o přerušení komunikace od klienta
-                        receivedClientInformation = (byte[]) msg.obj;
-                        // předání výsledku do aplikace skrze Intent
-                        Intent intent = new Intent(RECEIVED_CLIENT_INFO_ACTION_NAME);
-                        intent.putExtra(RECEIVED_CLIENT_INFO_EXTRA_NAME, receivedClientInformation);
-                        sendBroadcast(intent);
-                        Log.d(TAG, "Knihovna úspěšně běží v roli serveru");
-                    } else {
-                        // obdržený seznam klientů od zařízení v roli serveru v byte[] podobě
-                        receivedClients = (byte[]) msg.obj;
-                        // předání výsledku do aplikace skrze Intent
-                        Intent intent = new Intent(RECEIVE_CLIENTS_ACTION_NAME);
-                        intent.putExtra(RECEIVED_CLIENTS_EXTRA_NAME, receivedClients);
-                        sendBroadcast(intent);
-                        Log.d(TAG, "Knihovna úspěšně běží v roli klienta");
-                    }
-                    Toast.makeText(context, "Data od klienta úspěšně obdržena", Toast.LENGTH_SHORT)
-                            .show();
-                    break;
+            if (msg.what == MESSAGE_READ) {
+                if (mode == RUN_LIBRARY_AS_SERVER_VALUE) {
+                    // informace ze senzorů a info o přerušení komunikace od zařízení v roli klienta
+                    // pro zaslání do aplikace
+                    byte[] receivedClientInformation = (byte[]) msg.obj;
+                    // předání výsledku do aplikace skrze Intent
+                    Intent intent = new Intent(RECEIVED_CLIENT_INFO_ACTION_NAME);
+                    intent.putExtra(RECEIVED_CLIENT_INFO_EXTRA_NAME, receivedClientInformation);
+                    mainActivity.getApplicationContext().sendBroadcast(intent);
+                    Log.d(TAG, "Knihovna úspěšně běží v roli serveru");
+                } else {
+                    // obdržený seznam klientů od zařízení v roli serveru v byte[] podobě
+                    // pro zaslání do aplikace
+                    byte[] receivedClients = (byte[]) msg.obj;
+                    // předání výsledku do aplikace skrze Intent
+                    Intent intent = new Intent(RECEIVE_CLIENTS_ACTION_NAME);
+                    intent.putExtra(RECEIVED_CLIENTS_EXTRA_NAME, receivedClients);
+                    mainActivity.getApplicationContext().sendBroadcast(intent);
+                    Log.d(TAG, "Knihovna úspěšně běží v roli klienta");
+                }
             }
+            stopListening(); // zprávy odeslány -> můžeme zastavit vykonávání knihovny
             return true;
         }
     });
@@ -322,10 +332,15 @@ public class MainClass extends AppCompatActivity implements LibraryLoaderInterfa
         // a onPause() MainActivity bez řešení další dodatečné implementace
         try {
             // odpojení Receiveru a přerušení vláken
-            mainActivity.unregisterReceiver(p2pReceiver);
-            // TODO asi zbytecny Receiver vzdy iniciuje zmenu - volani
-            if (serverRole.isAlive()) serverRole.interrupt();
-            else if (clientRole.isAlive()) serverRole.interrupt();
+            try {
+                stopListening();
+            } catch (IllegalArgumentException e) {
+                Log.d(TAG, "P2P Receiver již byl odregistrován");
+            }
+            // přerušení vláken
+            if (serverRole != null && serverRole.isAlive()) serverRole.interrupt();
+            if (clientRole != null && clientRole.isAlive()) clientRole.interrupt();
+
             return 0;
         } catch (Exception ex) {
             Log.e(TAG, "Při zastavení běhu knihovny došlo k chybě: ");
@@ -335,15 +350,43 @@ public class MainClass extends AppCompatActivity implements LibraryLoaderInterfa
     }
 
     @Override
-    public int resume() {
+    public int resume(String path, Context context) {
+        // znovu obnovení chodu knihovny
+        // metoda velmi podobná metodě start(), tedy prvnotnímu zavedení knihovny
+        Log.d(TAG, "Knihovna znovu startuje");
+        this.context = context;
+        this.libraryPathInApp = path;
+
         try {
-            // registrace Receiveru a
-            mainActivity.registerReceiver(p2pReceiver, intentFilter);
-            if (serverRole.isInterrupted()) serverRole.start();
-            else if (clientRole.isInterrupted()) serverRole.start();
+            // init WifiManager objektu
+            wifiManager = (WifiManager) context.getApplicationContext()
+                    .getSystemService(Context.WIFI_SERVICE);
+            // kontrola stavu Wi-Fi
+            if (!wifiManager.isWifiEnabled()) {
+                // pokud není Wi-Fi zapnuta -> zapneme
+                wifiManager.setWifiEnabled(true);
+            }
+            // init WiFi p2p manažera, kanálu, receiveru a intent filteru
+            p2pManager = (WifiP2pManager) context.getSystemService(Context.WIFI_P2P_SERVICE);
+            channel = p2pManager.initialize(context, context.getMainLooper(), null);
+            p2pReceiver = new WifiDirectBroadcastReceiver(p2pManager, channel, this);
+            intentFilter = new IntentFilter();
+
+            // definici událostí, kterým má aplikace naslouchat pomocí Intent filteru
+            intentFilter.addAction(WifiP2pManager.WIFI_P2P_STATE_CHANGED_ACTION);
+            intentFilter.addAction(WifiP2pManager.WIFI_P2P_PEERS_CHANGED_ACTION);
+            intentFilter.addAction(WifiP2pManager.WIFI_P2P_CONNECTION_CHANGED_ACTION);
+            intentFilter.addAction(WifiP2pManager.WIFI_P2P_THIS_DEVICE_CHANGED_ACTION);
+
+            // registrace Receiveru
+            startListening();
+
+            // start procesu vykonávání P2P funkcí knihovny - začíná vyhledáním zařízení (peers)
+            discoverPeers();
+            Log.d(TAG, "Knihovna znovu běží");
             return 0;
         } catch (Exception ex) {
-            Log.e(TAG, "Při znovu spuštění běhu knihovny došlo k chybě: ");
+            Log.e(TAG, "Nepodařilo se znovu zavést knihovnu metodou resume(): ");
             ex.printStackTrace();
             return 1;
         }
@@ -353,28 +396,23 @@ public class MainClass extends AppCompatActivity implements LibraryLoaderInterfa
     public int exit() {
         try {
             // odpojení Receiveru
-            mainActivity.unregisterReceiver(p2pReceiver);
-            // ukončení běhu vláken
-// TODO serverRole null - isAlive() hodi null pointer
-            if(serverRole.isAlive()) {
-                serverRole.interrupt(); // klasický request na ukončení vlákna
-                serverRole.join(500); // čeká na ukončení vlákna 500 milisekund
-                // pokud vlákno stále běží - něco je špatně (např. uvíznutí v cyklu) -> násilné ukončení
-                if(serverRole.isAlive()) {
-                    // pouze v případě neúspěšného ukončení vlákna -> metoda není thread-safe a proto
-                    // deprecated
-                    serverRole.stop();
+            try {
+                mainActivity.unregisterReceiver(p2pReceiver);
+            } catch (IllegalArgumentException e) {
+                Log.d(TAG, "P2P Receiver již byl odregistrován");
+            }
+            // ukončení běhu vláken p2p serveru
+            if (mode == RUN_LIBRARY_AS_SERVER_VALUE) {
+                if (serverRole!= null && serverRole.isAlive()) {
+                    serverRole.interrupt(); // klasický request na ukončení vlákna
+                    serverRole.join(500); // čeká na ukončení vlákna 500 milisekund
                 }
             }
-// TODO to samy tady bude null pointer
-            if(clientRole.isAlive()) {
-                clientRole.interrupt(); // klasický request na ukončení vlákna
-                clientRole.join(500); // čeká na ukončení vlákna 500 milisekund
-                // pokud vlákno stále běží - něco je špatně (např. uvíznutí v cyklu) -> násilné ukončení
-                if(clientRole.isAlive()) {
-                    // pouze v případě neúspěšného ukončení vlákna -> metoda není thread-safe a proto
-                    // deprecated
-                    clientRole.stop();
+            // stejné u p2p klienta
+            if (mode == RUN_LIBRARY_AS_CLIENT_VALUE) {
+                if (clientRole!= null && clientRole.isAlive()) {
+                    clientRole.interrupt(); // klasický request na ukončení vlákna
+                    clientRole.join(500); // čeká na ukončení vlákna 500 milisekund
                 }
             }
             return 0;
@@ -387,6 +425,7 @@ public class MainClass extends AppCompatActivity implements LibraryLoaderInterfa
 
     @Override
     public String getDescription() {
+        // pro získání popisu knihovny z jejího deskriptoru umístěném v uložišti klienta
         List<String> data = new ArrayList<>();
         // získání dat z txt
         String pathToFile = libraryPathInApp + PATH_TO_DESC;
@@ -414,16 +453,26 @@ public class MainClass extends AppCompatActivity implements LibraryLoaderInterfa
         this.mode = mode;
     }
 
-    // metoda pro předání získaného seznamu klientů z okolních zařízení v roli klienta do aplikace
-    public byte[] getReceivedClients() {
-        return receivedClients;
+    // metody pro zahájení/ukončení naslouchání změnám, které jsou vyvolány funkcemi p2p knihovny
+    // inicializují a ukončují vykonávání knihovny
+    public void startListening() {
+        // registrace Receiveru
+        mainActivity.registerReceiver(p2pReceiver, intentFilter);
+    }
+    public void stopListening() {
+        // odregitrování Receiveru
+        mainActivity.unregisterReceiver(p2pReceiver);
     }
 
     public static String getFineLocation() {
         return FINE_LOCATION;
     }
 
-    public static int getMessageRead() { return MESSAGE_READ; }
+    public static int getMessageRead() {
+        return MESSAGE_READ;
+    }
 
-    public byte[] getMessageToSend() { return messageToSend; }
+    public byte[] getMessageToSend() {
+        return messageToSend;
+    }
 }

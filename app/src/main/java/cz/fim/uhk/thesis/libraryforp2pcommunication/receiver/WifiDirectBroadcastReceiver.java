@@ -1,6 +1,5 @@
 package cz.fim.uhk.thesis.libraryforp2pcommunication.receiver;
 
-import android.app.Activity;
 import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
@@ -13,10 +12,20 @@ import android.widget.Toast;
 import androidx.core.app.ActivityCompat;
 import cz.fim.uhk.thesis.libraryforp2pcommunication.MainClass;
 
+/**
+ * @author Bc. Ondřej Schneider - FIM UHK
+ * @version 1.0
+ * @since 2021-04-06
+ * Hlavní Receiver pro naslouchání všem důležitým událostem v souvislosti s p2p komunikací,
+ * který vyvolává (inciuje) všechny důležité p2p operace
+ */
 public class WifiDirectBroadcastReceiver extends BroadcastReceiver {
-    private WifiP2pManager p2pManager;
-    private WifiP2pManager.Channel channel;
-    private MainClass mainClass;
+    private final WifiP2pManager p2pManager;
+    private final WifiP2pManager.Channel channel;
+    private final MainClass mainClass;
+
+    // TAG pro logování
+    private static final String TAG = "P2PLibrary/P2PReceiver";
 
     public WifiDirectBroadcastReceiver(WifiP2pManager p2pManager, WifiP2pManager.Channel channel,
                                        MainClass mainClass) {
@@ -66,6 +75,7 @@ public class WifiDirectBroadcastReceiver extends BroadcastReceiver {
 
         } else if (WifiP2pManager.WIFI_P2P_THIS_DEVICE_CHANGED_ACTION.equals(action)) {
             // indikuje změny v konfiguraci tohoto zařízení - např. změna názvu zařízení apod.
+            Log.d(TAG, "došlo ke změně v konfiguraci zařízení");
         }
     }
 }
