@@ -176,7 +176,7 @@ public class MainClass extends AppCompatActivity implements LibraryLoaderInterfa
                 // nastavení pravděpodobnosti, že pojící se zařízení bude group owner dle
                 // groupOwnerIntent -> čím vyšší hodnota -> tím vyšší pravděpodobnost
                 if (mode == RUN_LIBRARY_AS_CLIENT_VALUE) {
-                    // jedná-li se o klienta -> mamá adresu serveru -> chceme aby byl group owner
+                    // jedná-li se o klienta -> má adresu serveru -> chceme aby byl group owner
                     config.groupOwnerIntent = 15;
                 } else {
                     // naopak chceme, aby klient nebyl group owner
